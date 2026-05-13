@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>参数化保险精算运营台 Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Parametric Insurance Demo</p>
+          <h1>参数化保险精算运营台</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="source-chip">定价 · 资本 · IFRS 17 · ALM</span>
+          <button class="icon-button" id="resetBtn" type="button" title="恢复默认参数" aria-label="恢复默认参数">↺</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="control-panel" aria-label="模型参数">
+          <section class="control-section">
+            <div class="section-title">
+              <span class="section-kicker">01</span>
+              <h2>产品与触发</h2>
+            </div>
+
+            <label class="range-field" for="lambda">
+              <span><span>年触发强度 λ</span><output id="lambdaOut"></output></span>
+              <input id="lambda" type="range" min="0.02" max="0.80" step="0.01" value="0.12" />
+            </label>
+
+            <label class="range-field" for="termMonths">
+              <span><span>保障期限</span><output id="termMonthsOut"></output></span>
+              <input id="termMonths" type="range" min="1" max="12" step="1" value="12" />
+            </label>
+
+            <label class="range-field" for="payout">
+              <span><span>最高赔付额</span><output id="payoutOut"></output></span>
+              <input id="payout" type="range" min="200" max="5000" step="100" value="1000" />
+            </label>
+
+            <label class="range-field" for="policies">
+              <span><span>保单数量</span><output id="policiesOut"></output></span>
+              <input id="policies" type="range" min="1000" max="100000" step="1000" value="12000" />
+            </label>
+
+            <label class="toggle-row" for="multiTrigger">
+              <input id="multiTrigger" type="checkbox" checked />
+              <span>年内允许多次触发</span>
+            </label>
+          </section>
+
+          <section class="control-section">
+            <div class="section-title">
+              <span class="section-kicker">02</span>
+              <h2>指数赔付函数</h2>
+            </div>
+
+            <label class="range-field" for="thresholdStart">
+              <span><span>起赔阈值 Z0</span><output id="thresholdStartOut"></output></span>
+              <input id="thresholdStart" type="range" min="40" max="140" step="1" value="70" />
+            </label>
+
+            <label class="range-field" for="thresholdFull">
+              <span><span>满赔阈值 Z1</span><output id="thresholdFullOut"></output></span>
+              <input id="thresholdFull" type="range" min="60" max="220" step="1" value="120" />
+            </label>
+
+            <label class="range-field" for="indexMean">
+              <span><span>触发后指数均值</span><output id="indexMeanOut"></output></span>
+              <input id="indexMean" type="range" min="50" max="180" step="1" value="96" />
+            </label>
+
+            <label class="range-field" for="indexVol">
+              <span><span>指数波动 σ</span><output id="indexVolOut"></output></span>
+              <input id="indexVol" type="range" min="5" max="70" step="1" value="24" />
+            </label>
+          </section>
+
+          <section class="control-section">
+            <div class="section-title">
+              <span class="section-kicker">03</span>
+              <h2>加载与资本层</h2>
+            </div>
+
+            <label class="range-field" for="discountRate">
+              <span><span>年贴现率</span><output id="discountRateOut"></output></span>
+              <input id="discountRate" type="range" min="0" max="8" step="0.1" value="2.5" />
+            </label>
+
+            <label class="range-field" for="riskLoad">
+              <span><span>风险加载</span><output id="riskLoadOut"></output></span>
+              <input id="riskLoad" type="range" min="0" max="55" step="1" value="25" />
+            </label>
+
+            <label class="range-field" for="expenseLoad">
+              <span><span>费用加载</span><output id="expenseLoadOut"></output></span>
+              <input id="expenseLoad" type="range" min="0" max="35" step="1" value="12" />
+            </label>
+
+            <label class="range-field" for="profitLoad">
+              <span><span>利润加载</span><output id="profitLoadOut"></output></span>
+              <input id="profitLoad" type="range" min="0" max="18" step="1" value="3" />
+            </label>
+
+            <label class="range-field" for="correlation">
+              <span><span>区域相关性</span><output id="correlationOut"></output></span>
+              <input id="correlation" type="range" min="35" max="100" step="1" value="85" />
+            </label>
+          </section>
+
+          <section class="control-section">
+            <div class="section-title">
+              <span class="section-kicker">04</span>
+              <h2>风险转移与 ALM</h2>
+            </div>
+
+            <label class="range-field" for="retentionM">
+              <span><span>自留层上限</span><output id="retentionMOut"></output></span>
+              <input id="retentionM" type="range" min="1" max="50" step="0.5" value="6" />
+            </label>
+
+            <label class="range-field" for="reinsuranceM">
+              <span><span>再保险层限额</span><output id="reinsuranceMOut"></output></span>
+              <input id="reinsuranceM" type="range" min="0" max="60" step="0.5" value="5" />
+            </label>
+
+            <label class="range-field" for="catBondM">
+              <span><span>Cat Bond 层限额</span><output id="catBondMOut"></output></span>
+              <input id="catBondM" type="range" min="0" max="90" step="0.5" value="4" />
+            </label>
+
+            <label class="range-field" for="liquidityBuffer">
+              <span><span>流动性缓冲</span><output id="liquidityBufferOut"></output></span>
+              <input id="liquidityBuffer" type="range" min="80" max="160" step="5" value="110" />
+            </label>
+
+            <label class="range-field" for="stablecoinShare">
+              <span><span>稳定币赔付池</span><output id="stablecoinShareOut"></output></span>
+              <input id="stablecoinShare" type="range" min="0" max="40" step="1" value="8" />
+            </label>
+
+            <label class="range-field" for="eventMonth">
+              <span><span>IFRS 17 触发月份</span><output id="eventMonthOut"></output></span>
+              <input id="eventMonth" type="range" min="0" max="12" step="1" value="6" />
+            </label>
+          </section>
+        </aside>
+
+        <main class="workspace">
+          <section class="system-map" aria-label="系统流程">
+            <div class="flow-step">
+              <span>数据</span>
+              <strong>λ, Z0, Z1, σ</strong>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <span>定价</span>
+              <strong>EPV 与 Pgross</strong>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <span>资本</span>
+              <strong>VaR / TVaR</strong>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <span>会计</span>
+              <strong>PAA / LRC</strong>
+            </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <span>ALM</span>
+              <strong>流动性与分层</strong>
+            </div>
+          </section>
+
+          <section class="metric-grid" aria-label="核心指标">
+            <article class="metric-card">
+              <span>触发概率</span>
+              <strong id="triggerProbability">-</strong>
+              <small>p = 1 - exp(-λτ)</small>
+            </article>
+            <article class="metric-card">
+              <span>纯风险保费</span>
+              <strong id="purePremium">-</strong>
+              <small>EPV(L)</small>
+            </article>
+            <article class="metric-card">
+              <span>毛保费</span>
+              <strong id="grossPremium">-</strong>
+              <small>Pgross = EPV / (1 - θ)</small>
+            </article>
+            <article class="metric-card">
+              <span>99.5% 净赔付</span>
+              <strong id="netVar">-</strong>
+              <small>再保与 Cat Bond 后</small>
+            </article>
+          </section>
+
+          <section class="formula-strip">
+            <span>Pr(τ &gt; t) = exp(-∫h(u)du)</span>
+            <span>f(Z) = min{X · (Z - Z0)/(Z1 - Z0), X}</span>
+            <span>Capital = VaR99.5 - E[Lnet]</span>
+          </section>
+
+          <nav class="tabbar" role="tablist" aria-label="Demo 模块">
+            <button class="tab-button active" type="button" role="tab" aria-selected="true" data-view="pricing">定价引擎</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="capital">资本与再保</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="ifrs">IFRS 17</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="alm">ALM</button>
+          </nav>
+
+          <section class="view active" id="view-pricing" role="tabpanel">
+            <div class="view-grid">
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Pricing</span>
+                    <h2>赔付函数与指数分布</h2>
+                  </div>
+                  <span class="badge" id="expectedFactorBadge">-</span>
+                </div>
+                <canvas id="payoutCanvas" class="chart" aria-label="赔付函数图"></canvas>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Premium bridge</span>
+                    <h2>保费桥</h2>
+                  </div>
+                  <span class="badge" id="lossRatioBadge">-</span>
+                </div>
+                <canvas id="premiumCanvas" class="chart" aria-label="保费桥图"></canvas>
+              </article>
+
+              <article class="panel wide">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Actuarial output</span>
+                    <h2>单张保单定价输出</h2>
+                  </div>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <tbody id="pricingRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="view" id="view-capital" role="tabpanel" hidden>
+            <div class="view-grid">
+              <article class="panel wide">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Economic capital</span>
+                    <h2>组合损失分布</h2>
+                  </div>
+                  <span class="badge" id="capitalBadge">-</span>
+                </div>
+                <canvas id="lossCanvas" class="chart large" aria-label="损失分布图"></canvas>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Risk transfer</span>
+                    <h2>风险分层</h2>
+                  </div>
+                </div>
+                <canvas id="layerCanvas" class="chart" aria-label="风险分层图"></canvas>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Capital table</span>
+                    <h2>资本指标</h2>
+                  </div>
+                </div>
+                <div class="table-wrap compact">
+                  <table>
+                    <tbody id="capitalRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="view" id="view-ifrs" role="tabpanel" hidden>
+            <div class="view-grid">
+              <article class="panel wide">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">PAA schedule</span>
+                    <h2>保险收入与 LRC 摊销</h2>
+                  </div>
+                  <span class="badge" id="ifrsBadge">PAA</span>
+                </div>
+                <canvas id="ifrsCanvas" class="chart large" aria-label="IFRS 17 月度图"></canvas>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Recognition</span>
+                    <h2>会计摘要</h2>
+                  </div>
+                </div>
+                <div class="table-wrap compact">
+                  <table>
+                    <tbody id="ifrsSummaryRows"></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Monthly ledger</span>
+                    <h2>月度明细</h2>
+                  </div>
+                </div>
+                <div class="table-wrap scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>月</th>
+                        <th>收入</th>
+                        <th>赔付</th>
+                        <th>LRC</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ifrsRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="view" id="view-alm" role="tabpanel" hidden>
+            <div class="view-grid">
+              <article class="panel wide">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Liquidity</span>
+                    <h2>快速赔付资金池</h2>
+                  </div>
+                  <span class="badge" id="almBadge">-</span>
+                </div>
+                <canvas id="almCanvas" class="chart large" aria-label="ALM 流动性图"></canvas>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Asset mix</span>
+                    <h2>短久期资产配置</h2>
+                  </div>
+                </div>
+                <canvas id="assetCanvas" class="chart" aria-label="资产配置图"></canvas>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">RBC lens</span>
+                    <h2>资本占用</h2>
+                  </div>
+                </div>
+                <div class="table-wrap compact">
+                  <table>
+                    <tbody id="almRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
