@@ -1,10 +1,24 @@
-# 参数化保险精算运营台 Demo
+# Parametric Insurance Actuarial Demo
 
-这个 demo 把 `parametric_insurance_formula_rendered_clean.pdf` 中的框架拆成四个可交互模块：
+This repository contains a front-end demo that turns the source actuarial framework into four interactive modules:
 
-- 定价引擎：泊松触发概率、分段赔付函数、纯风险保费和毛保费。
-- 资本与再保：组合损失模拟、99.5% VaR / TVaR、自留层、再保层和 Cat Bond 层。
-- IFRS 17：短期合同的 PAA、LRC 摊销、保险收入与触发赔付确认。
-- ALM：快速赔付资金池、短久期资产配置、稳定币赔付池和 RBC 资本占用视角。
+- Pricing engine: Poisson trigger probability, linear parametric payout, pure premium, and gross premium.
+- Capital & risk transfer: illustrative loss simulation, 99.5% VaR / TVaR, retention, reinsurance, and Cat Bond layers.
+- IFRS 17 PAA: simplified revenue recognition, LRC runoff, and claim recognition for a short-duration contract.
+- ALM: rapid payout liquidity pool, short-duration asset mix, stablecoin payout pool, and capital charge lens.
 
-直接打开 `index.html` 即可运行，不需要后端服务。
+## Key assumptions
+
+- `lambda` is interpreted as the annual intensity of trigger-eligible events, not all weather events.
+- Conditional on a trigger, the hazard index `Z` is approximated with a normal distribution for demo purposes.
+- The affected portfolio share is a common-shock exposure assumption, not a statistical correlation model.
+- Capital simulation uses 8,000 scenarios and is illustrative. A production actuarial model should use calibrated hazard distributions, tail stress testing, and a larger or variance-reduced simulation setup.
+- The IFRS 17 module is a simplified PAA illustration and is not a complete IFRS 17 valuation engine.
+
+Open `index.html` directly, or serve the folder locally:
+
+```bash
+python3 -m http.server 8765
+```
+
+Then visit `http://127.0.0.1:8765/index.html`.

@@ -12,7 +12,7 @@ const DEFAULTS = {
   riskLoad: 25,
   expenseLoad: 12,
   profitLoad: 3,
-  correlation: 85,
+  affectedShare: 85,
   retentionM: 6,
   reinsuranceM: 5,
   catBondM: 4,
@@ -22,10 +22,10 @@ const DEFAULTS = {
 };
 
 const CONTROL_META = {
-  lambda: { suffix: "/年", decimals: 2 },
-  termMonths: { suffix: "个月", decimals: 0 },
+  lambda: { suffix: "/yr", decimals: 2 },
+  termMonths: { suffix: " mo", decimals: 0 },
   payout: { prefix: "HK$", decimals: 0 },
-  policies: { suffix: "张", decimals: 0 },
+  policies: { suffix: " policies", decimals: 0 },
   thresholdStart: { decimals: 0 },
   thresholdFull: { decimals: 0 },
   indexMean: { decimals: 0 },
@@ -34,7 +34,7 @@ const CONTROL_META = {
   riskLoad: { suffix: "%", decimals: 0 },
   expenseLoad: { suffix: "%", decimals: 0 },
   profitLoad: { suffix: "%", decimals: 0 },
-  correlation: { suffix: "%", decimals: 0 },
+  affectedShare: { suffix: "%", decimals: 0 },
   retentionM: { suffix: "m", prefix: "HK$", decimals: 1 },
   reinsuranceM: { suffix: "m", prefix: "HK$", decimals: 1 },
   catBondM: { suffix: "m", prefix: "HK$", decimals: 1 },
@@ -67,7 +67,7 @@ function clamp(value, min, max) {
 }
 
 function fmtNumber(value, decimals = 0) {
-  return Number(value).toLocaleString("zh-HK", {
+  return Number(value).toLocaleString("en-HK", {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   });
@@ -92,7 +92,7 @@ function updateControlOutputs() {
     if (!input || !output) return;
     const meta = CONTROL_META[id];
     if (id === "eventMonth") {
-      output.textContent = Number(input.value) === 0 ? "无触发" : `第 ${input.value} 月`;
+      output.textContent = Number(input.value) === 0 ? "No claim" : `Month ${input.value}`;
       return;
     }
     const number = Number(input.value);
@@ -196,7 +196,7 @@ function seedFromInputs(inputs) {
     inputs.thresholdFull,
     inputs.indexMean,
     inputs.indexVol,
-    inputs.correlation,
+    inputs.affectedShare,
     inputs.retentionM,
     inputs.reinsuranceM,
     inputs.catBondM,
@@ -306,15 +306,20 @@ function simulateCapital(pricing) {
   const netLosses = [];
   let totalRiCeded = 0;
   let totalCatCeded = 0;
-  const correlation = inputs.correlation / 100;
+  const baseAffectedShare = inputs.affectedShare / 100;
+  const lambdaTerm = inputs.lambda * inputs.termYears;
 
   for (let year = 0; year < simulations; year += 1) {
-    const eventCount = poisson(inputs.lambda * inputs.termYears, rng);
+    const eventCount = inputs.multiTrigger
+      ? poisson(lambdaTerm, rng)
+      : rng() < 1 - Math.exp(-lambdaTerm)
+        ? 1
+        : 0;
     let grossLoss = 0;
     for (let event = 0; event < eventCount; event += 1) {
       const factor = sampleConditionalFactor(inputs, rng);
-      const concentrationNoise = (rng() - 0.5) * (1 - correlation) * 0.7;
-      const affectedShare = clamp(correlation + concentrationNoise, 0.08, 1);
+      const concentrationNoise = (rng() - 0.5) * (1 - baseAffectedShare) * 0.7;
+      const affectedShare = clamp(baseAffectedShare + concentrationNoise, 0.08, 1);
       grossLoss += inputs.policies * affectedShare * inputs.payout * factor;
     }
     const layered = netAfterLayers(grossLoss, inputs);
@@ -356,7 +361,7 @@ function buildIfrsSchedule(pricing) {
   const months = inputs.termMonths;
   const monthlyRevenue = portfolioPremium / months;
   const eventMonth = clamp(inputs.eventMonth, 0, months);
-  const claim = eventMonth === 0 ? 0 : inputs.policies * (inputs.correlation / 100) * expectedPayoutPerTrigger;
+  const claim = eventMonth === 0 ? 0 : inputs.policies * (inputs.affectedShare / 100) * expectedPayoutPerTrigger;
   const rows = [];
   let lrc = portfolioPremium;
   let totalRevenue = 0;
@@ -484,9 +489,9 @@ function drawPremiumChart(model) {
   const plot = { x: 44, y: 24, w: width - 64, h: height - 72 };
   const bars = [
     { label: "EPV", value: model.purePremium, color: COLORS.teal },
-    { label: "风险", value: model.riskLoadAmount, color: COLORS.amber },
-    { label: "费用", value: model.expenseLoadAmount, color: COLORS.blue },
-    { label: "利润", value: model.profitLoadAmount, color: COLORS.green },
+    { label: "Risk", value: model.riskLoadAmount, color: COLORS.amber },
+    { label: "Expense", value: model.expenseLoadAmount, color: COLORS.blue },
+    { label: "Profit", value: model.profitLoadAmount, color: COLORS.green },
   ];
   const max = Math.max(model.grossPremium, 1);
   const gap = 12;
@@ -517,7 +522,7 @@ function drawPremiumChart(model) {
   ctx.stroke();
   ctx.fillStyle = COLORS.rose;
   ctx.font = "800 12px sans-serif";
-  ctx.fillText(`毛保费 ${fmtMoney(model.grossPremium)}`, plot.x + 4, grossY - 8);
+  ctx.fillText(`Gross ${fmtMoney(model.grossPremium)}`, plot.x + 4, grossY - 8);
 }
 
 function histogram(values, bucketCount, maxValue) {
@@ -598,10 +603,10 @@ function drawLayerChart(model) {
   const uncovered = Math.max(loss - retention - ri - cat, 0);
   const max = Math.max(loss, 1);
   const segments = [
-    { label: "自留", value: retention, color: COLORS.teal },
-    { label: "再保", value: ri, color: COLORS.blue },
+    { label: "Retention", value: retention, color: COLORS.teal },
+    { label: "Reinsurance", value: ri, color: COLORS.blue },
     { label: "Cat Bond", value: cat, color: COLORS.amber },
-    { label: "尾部缺口", value: uncovered, color: COLORS.rose },
+    { label: "Tail gap", value: uncovered, color: COLORS.rose },
   ];
   let x = plot.x;
 
@@ -667,11 +672,11 @@ function drawIfrsChart(model) {
 
   ctx.fillStyle = COLORS.muted;
   ctx.font = "700 12px sans-serif";
-  ctx.fillText("收入", plot.x + 6, plot.y + plot.h + 28);
+  ctx.fillText("Revenue", plot.x + 6, plot.y + plot.h + 28);
   ctx.fillStyle = COLORS.rose;
-  ctx.fillText("赔付", plot.x + 54, plot.y + plot.h + 28);
+  ctx.fillText("Claim", plot.x + 76, plot.y + plot.h + 28);
   ctx.fillStyle = COLORS.blue;
-  ctx.fillText("LRC", plot.x + 106, plot.y + plot.h + 28);
+  ctx.fillText("LRC", plot.x + 128, plot.y + plot.h + 28);
 }
 
 function drawAlmChart(model) {
@@ -682,10 +687,10 @@ function drawAlmChart(model) {
   const requiredLiquidity = capital.netVar99 * (inputs.liquidityBuffer / 100);
   const plot = { x: 58, y: 28, w: width - 94, h: height - 82 };
   const bars = [
-    { label: "99%净赔付", value: capital.netVar99, color: COLORS.rose },
-    { label: "缓冲后", value: requiredLiquidity, color: COLORS.amber },
-    { label: "总保费", value: model.portfolioPremium, color: COLORS.teal },
-    { label: "经济资本", value: capital.economicCapital, color: COLORS.blue },
+    { label: "99% net loss", value: capital.netVar99, color: COLORS.rose },
+    { label: "With buffer", value: requiredLiquidity, color: COLORS.amber },
+    { label: "Gross premium", value: model.portfolioPremium, color: COLORS.teal },
+    { label: "Economic capital", value: capital.economicCapital, color: COLORS.blue },
   ];
   const max = Math.max(...bars.map((bar) => bar.value), 1);
   const gap = 16;
@@ -716,10 +721,10 @@ function drawAssetChart(model) {
   const mmf = Math.max(0, 0.38 - stable / 2);
   const bills = Math.max(0, 1 - cash - mmf - stable);
   const segments = [
-    { label: "现金", value: cash, color: COLORS.teal },
-    { label: "货基", value: mmf, color: COLORS.blue },
-    { label: "短债", value: bills, color: COLORS.amber },
-    { label: "稳定币", value: stable, color: COLORS.rose },
+    { label: "Cash", value: cash, color: COLORS.teal },
+    { label: "Money market", value: mmf, color: COLORS.blue },
+    { label: "T-bills", value: bills, color: COLORS.amber },
+    { label: "Stablecoin", value: stable, color: COLORS.rose },
   ];
   const cx = width / 2;
   const cy = height / 2 - 8;
@@ -744,7 +749,7 @@ function drawAssetChart(model) {
   ctx.fillStyle = COLORS.ink;
   ctx.font = "800 16px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("短久期", cx, cy + 5);
+  ctx.fillText("Short duration", cx, cy + 5);
   ctx.textAlign = "start";
 
   segments.forEach((segment, index) => {
@@ -773,13 +778,13 @@ function renderTables(model) {
   const ifrs = model.ifrs;
   const theta = inputs.totalLoad;
   setRows($("#pricingRows"), [
-    ["触发概率 p", fmtPct(model.triggerProbability), "1 - exp(-λτ)"],
-    ["每次触发期望赔付", fmtMoney(model.expectedPayoutPerTrigger), `E[f(Z)] = ${fmtPct(model.expectedFactor)}`],
-    ["纯风险保费 EPV(L)", fmtMoney(model.purePremium), inputs.multiTrigger ? "λτ · E[f(Z)] · v" : "p · E[f(Z)] · v"],
-    ["总加载率 θ", fmtPct(theta), "风险 + 费用 + 利润"],
-    ["毛保费 Pgross", fmtMoney(model.grossPremium), "EPV / (1 - θ)"],
-    ["组合期望赔付", fmtMoney(model.portfolioExpectedLoss), `${fmtNumber(inputs.policies)} 张保单`],
-    ["组合总保费", fmtMoney(model.portfolioPremium), "PAA 初始 LRC"],
+    ["Trigger probability p", fmtPct(model.triggerProbability), "1 - exp(-λτ)"],
+    ["Expected payout per trigger", fmtMoney(model.expectedPayoutPerTrigger), `E[g(Z)|trigger] = ${fmtPct(model.expectedFactor)}`],
+    ["Pure premium EPV(L)", fmtMoney(model.purePremium), inputs.multiTrigger ? "λτ · E[g(Z)|trigger] · v" : "p · E[g(Z)|trigger] · v"],
+    ["Total load θ", fmtPct(theta), "Risk + expense + profit"],
+    ["Gross premium Pgross", fmtMoney(model.grossPremium), "EPV / (1 - θ)"],
+    ["Portfolio expected loss", fmtMoney(model.portfolioExpectedLoss), `${fmtNumber(inputs.policies)} policies`],
+    ["Portfolio gross premium", fmtMoney(model.portfolioPremium), "Initial LRC under simplified PAA"],
   ]);
 
   setRows($("#capitalRows"), [
@@ -787,18 +792,18 @@ function renderTables(model) {
     ["Net 99.0% VaR", fmtMoney(capital.netVar99)],
     ["Net 99.5% VaR", fmtMoney(capital.netVar995)],
     ["Net 99.5% TVaR", fmtMoney(capital.netTvar995)],
-    ["经济资本", fmtMoney(capital.economicCapital)],
-    ["平均再保摊回", fmtMoney(capital.avgRiCeded)],
-    ["平均 Cat Bond 摊回", fmtMoney(capital.avgCatCeded)],
+    ["Economic capital", fmtMoney(capital.economicCapital)],
+    ["Average reinsurance recovery", fmtMoney(capital.avgRiCeded)],
+    ["Average Cat Bond recovery", fmtMoney(capital.avgCatCeded)],
   ]);
 
   setRows($("#ifrsSummaryRows"), [
-    ["计量模型", "PAA"],
-    ["初始 LRC", fmtMoney(ifrs.initialLrc)],
-    ["保险服务收入", fmtMoney(ifrs.totalRevenue)],
-    ["保险服务费用", fmtMoney(ifrs.totalClaims)],
-    ["保险服务结果", fmtMoney(ifrs.serviceResult)],
-    ["损失性组", ifrs.onerous ? "需关注" : "未触发"],
+    ["Measurement basis", "Simplified PAA illustration"],
+    ["Initial LRC", fmtMoney(ifrs.initialLrc)],
+    ["Insurance revenue", fmtMoney(ifrs.totalRevenue)],
+    ["Insurance service expense", fmtMoney(ifrs.totalClaims)],
+    ["Insurance service result", fmtMoney(ifrs.serviceResult)],
+    ["Onerous group flag", ifrs.onerous ? "Watch" : "Not triggered"],
   ]);
 
   $("#ifrsRows").innerHTML = ifrs.rows
@@ -816,47 +821,47 @@ function renderTables(model) {
   const stablecoinCharge = stablecoinAsset;
   const conservativeCharge = capital.netVar99 * 0.011;
   setRows($("#almRows"), [
-    ["99% 即时赔付需求", fmtMoney(capital.netVar99)],
-    ["缓冲后资金池", fmtMoney(capital.netVar99 * (inputs.liquidityBuffer / 100))],
-    ["稳定币赔付池", fmtMoney(stablecoinAsset)],
-    ["稳定币 RBC 占用", fmtMoney(stablecoinCharge)],
-    ["低风险资产占用", fmtMoney(conservativeCharge)],
-    ["可用总保费", fmtMoney(model.portfolioPremium)],
+    ["99% immediate payout need", fmtMoney(capital.netVar99)],
+    ["Liquidity pool after buffer", fmtMoney(capital.netVar99 * (inputs.liquidityBuffer / 100))],
+    ["Stablecoin payout pool", fmtMoney(stablecoinAsset)],
+    ["Stablecoin RBC charge", fmtMoney(stablecoinCharge)],
+    ["Low-risk asset charge", fmtMoney(conservativeCharge)],
+    ["Available gross premium", fmtMoney(model.portfolioPremium)],
   ]);
 }
 
 function updateBadges(model) {
-  $("#expectedFactorBadge").textContent = `E[f(Z)] ${fmtPct(model.expectedFactor)}`;
-  $("#lossRatioBadge").textContent = `预期赔付率 ${fmtPct(model.lossRatio)}`;
+  $("#expectedFactorBadge").textContent = `E[g(Z)|trigger] ${fmtPct(model.expectedFactor)}`;
+  $("#lossRatioBadge").textContent = `Expected loss ratio ${fmtPct(model.lossRatio)}`;
 
   const coverRatio = model.inputs.retentionM * 1_000_000 + model.inputs.reinsuranceM * 1_000_000 + model.inputs.catBondM * 1_000_000;
   const capitalBadge = $("#capitalBadge");
   const tailGap = Math.max(model.capital.grossVar995 - coverRatio, 0);
   capitalBadge.className = "badge";
   if (tailGap <= 1) {
-    capitalBadge.textContent = "尾部已覆盖";
+    capitalBadge.textContent = "Tail covered";
     capitalBadge.classList.add("status-good");
   } else if (tailGap < model.capital.grossVar995 * 0.18) {
-    capitalBadge.textContent = "尾部有缺口";
+    capitalBadge.textContent = "Tail gap";
     capitalBadge.classList.add("status-watch");
   } else {
-    capitalBadge.textContent = "资本压力高";
+    capitalBadge.textContent = "High capital strain";
     capitalBadge.classList.add("status-risk");
   }
 
   const ifrsBadge = $("#ifrsBadge");
   ifrsBadge.className = "badge";
-  ifrsBadge.textContent = model.ifrs.onerous ? "亏损性组" : "PAA";
+  ifrsBadge.textContent = model.ifrs.onerous ? "Onerous watch" : "Simplified PAA";
   ifrsBadge.classList.add(model.ifrs.onerous ? "status-risk" : "status-good");
 
   const almBadge = $("#almBadge");
   const liquidityNeed = model.capital.netVar99 * (model.inputs.liquidityBuffer / 100);
   almBadge.className = "badge";
   if (model.portfolioPremium + model.capital.economicCapital >= liquidityNeed) {
-    almBadge.textContent = "流动性充足";
+    almBadge.textContent = "Liquidity sufficient";
     almBadge.classList.add("status-good");
   } else {
-    almBadge.textContent = "需补充流动性";
+    almBadge.textContent = "Liquidity top-up needed";
     almBadge.classList.add("status-watch");
   }
 }
