@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Parametric Insurance Actuarial Demo</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=3" />
   </head>
   <body>
     <div class="app-shell">
@@ -182,17 +182,17 @@
             <article class="metric-card">
               <span>Trigger probability</span>
               <strong id="triggerProbability">-</strong>
-              <small>p = 1 - exp(-λτ)</small>
+              <small><span class="math">p = 1 - e<sup>-λτ</sup></span></small>
             </article>
             <article class="metric-card">
               <span>Pure premium</span>
               <strong id="purePremium">-</strong>
-              <small>EPV(L)</small>
+              <small><span class="math">P<sub>pure</sub> = v<sub>τ</sub> · ν · X · E[g(Z)|trigger]</span></small>
             </article>
             <article class="metric-card">
               <span>Gross premium</span>
               <strong id="grossPremium">-</strong>
-              <small>Pgross = EPV / (1 - θ)</small>
+              <small><span class="math">P<sub>gross</sub> = P<sub>pure</sub>/(1 - θ)</span></small>
             </article>
             <article class="metric-card">
               <span>99.5% net loss</span>
@@ -202,10 +202,26 @@
           </section>
 
           <section class="formula-strip">
-            <span>Pr(τ &gt; t) = exp(-∫h(u)du)</span>
-            <span>f(Z) = min{X · (Z - Z0)/(Z1 - Z0), X}</span>
-            <span>Capital = VaR99.5 - E[Lnet]</span>
-            <span>Assumption: λ is trigger-eligible annual intensity; Z|trigger uses a normal approximation for demo purposes.</span>
+            <div class="formula-card">
+              <strong>Trigger</strong>
+              <span class="math">Pr(T &gt; t) = exp(-∫₀ᵗ h(u)du), p = 1 - exp(-λτ)</span>
+            </div>
+            <div class="formula-card">
+              <strong>Payout</strong>
+              <span class="math">g(Z) = min(max((Z - Z₀)/(Z₁ - Z₀), 0), 1), H(Z) = Xg(Z)</span>
+            </div>
+            <div class="formula-card">
+              <strong>Premium</strong>
+              <span class="math">P_pure = v_τ · ν · X · E[g(Z)|trigger], ν = λτ or p, P_gross = P_pure/(1 - θ)</span>
+            </div>
+            <div class="formula-card">
+              <strong>Capital</strong>
+              <span class="math">EC = VaR_99.5%(L_net) - E[L_net]</span>
+            </div>
+            <div class="formula-card assumption">
+              <strong>Assumption</strong>
+              <span>λ is trigger-eligible annual intensity; Z|trigger uses a normal approximation for demo purposes.</span>
+            </div>
           </section>
 
           <nav class="tabbar" role="tablist" aria-label="Demo modules">
@@ -387,6 +403,6 @@
       </div>
     </div>
 
-    <script src="./app.js"></script>
+    <script src="./app.js?v=3"></script>
   </body>
 </html>

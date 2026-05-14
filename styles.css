@@ -302,18 +302,33 @@ input[type="range"] {
   font-variant-numeric: tabular-nums;
 }
 
+.math {
+  font-family:
+    "Cambria Math", "STIX Two Text", Georgia, "Times New Roman", ui-serif, serif;
+  font-style: normal;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+
+.math sub,
+.math sup {
+  font-size: 0.72em;
+  font-style: normal;
+  line-height: 1;
+}
+
 .formula-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 
-.formula-strip span {
-  flex: 1 1 240px;
-  min-height: 38px;
-  display: flex;
-  align-items: center;
+.formula-strip .formula-card {
+  min-height: 56px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
   padding: 8px 10px;
   color: #334155;
   background: var(--surface);
@@ -321,7 +336,29 @@ input[type="range"] {
   border-radius: 8px;
   font-size: 13px;
   font-weight: 750;
-  overflow-wrap: anywhere;
+  overflow: visible;
+}
+
+.formula-card strong {
+  color: var(--teal);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.formula-card .math {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  padding-bottom: 0;
+  white-space: normal;
+}
+
+.formula-card.assumption {
+  grid-column: span 2;
+}
+
+.formula-card.assumption span {
+  line-height: 1.25;
 }
 
 .tabbar {
@@ -470,8 +507,13 @@ tr:last-child td {
   .system-map,
   .metric-grid,
   .view-grid,
-  .tabbar {
+  .tabbar,
+  .formula-strip {
     grid-template-columns: 1fr;
+  }
+
+  .formula-card.assumption {
+    grid-column: auto;
   }
 
   .chart,

@@ -778,11 +778,17 @@ function renderTables(model) {
   const ifrs = model.ifrs;
   const theta = inputs.totalLoad;
   setRows($("#pricingRows"), [
-    ["Trigger probability p", fmtPct(model.triggerProbability), "1 - exp(-λτ)"],
-    ["Expected payout per trigger", fmtMoney(model.expectedPayoutPerTrigger), `E[g(Z)|trigger] = ${fmtPct(model.expectedFactor)}`],
-    ["Pure premium EPV(L)", fmtMoney(model.purePremium), inputs.multiTrigger ? "λτ · E[g(Z)|trigger] · v" : "p · E[g(Z)|trigger] · v"],
+    ["Trigger probability p", fmtPct(model.triggerProbability), '<span class="math">1 - e<sup>-λτ</sup></span>'],
+    ["Expected payout per trigger", fmtMoney(model.expectedPayoutPerTrigger), `<span class="math">X · E[g(Z)|trigger]</span> = ${fmtPct(model.expectedFactor)} × X`],
+    [
+      "Pure premium EPV(L)",
+      fmtMoney(model.purePremium),
+      inputs.multiTrigger
+        ? '<span class="math">λτ · X · E[g(Z)|trigger] · v<sub>τ</sub></span>'
+        : '<span class="math">p · X · E[g(Z)|trigger] · v<sub>τ</sub></span>',
+    ],
     ["Total load θ", fmtPct(theta), "Risk + expense + profit"],
-    ["Gross premium Pgross", fmtMoney(model.grossPremium), "EPV / (1 - θ)"],
+    ["Gross premium Pgross", fmtMoney(model.grossPremium), '<span class="math">P<sub>pure</sub>/(1 - θ)</span>'],
     ["Portfolio expected loss", fmtMoney(model.portfolioExpectedLoss), `${fmtNumber(inputs.policies)} policies`],
     ["Portfolio gross premium", fmtMoney(model.portfolioPremium), "Initial LRC under simplified PAA"],
   ]);
