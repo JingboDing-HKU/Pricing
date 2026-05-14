@@ -2,6 +2,7 @@
 
 This repository contains a front-end demo that turns the source actuarial framework into four interactive modules:
 
+- Workflow & governance: pricing file checklist, assumption register, risk appetite gates, and stress pack.
 - Pricing engine: Poisson trigger probability, linear parametric payout, pure premium, and gross premium.
 - Capital & risk transfer: illustrative loss simulation, 99.5% VaR / TVaR, retention, reinsurance, and Cat Bond layers.
 - IFRS 17 PAA: simplified revenue recognition, LRC runoff, and claim recognition for a short-duration contract.
@@ -12,6 +13,7 @@ This repository contains a front-end demo that turns the source actuarial framew
 - `lambda` is interpreted as the annual intensity of trigger-eligible events, not all weather events.
 - Conditional on a trigger, the hazard index `Z` is approximated with a normal distribution for demo purposes.
 - The affected portfolio share is a common-shock exposure assumption, not a statistical correlation model.
+- The actuarial benchmark premium adds basis risk, parameter uncertainty from data credibility, and a cost-of-capital charge on economic capital.
 - Capital simulation uses 8,000 scenarios and is illustrative. A production actuarial model should use calibrated hazard distributions, tail stress testing, and a larger or variance-reduced simulation setup.
 - The IFRS 17 module is a simplified PAA illustration and is not a complete IFRS 17 valuation engine.
 

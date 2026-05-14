@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Parametric Insurance Actuarial Demo</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <div class="app-shell">
@@ -14,7 +14,7 @@
           <h1>Parametric Insurance Actuarial Workbench</h1>
         </div>
         <div class="topbar-actions">
-          <span class="source-chip">Pricing · Capital · IFRS 17 PAA · ALM</span>
+          <span class="source-chip">Workflow · Pricing · Capital · IFRS 17 PAA · ALM</span>
           <button class="icon-button" id="resetBtn" type="button" title="Reset defaults" aria-label="Reset defaults">↺</button>
         </div>
       </header>
@@ -148,6 +148,28 @@
               <input id="eventMonth" type="range" min="0" max="12" step="1" value="6" />
             </label>
           </section>
+
+          <section class="control-section">
+            <div class="section-title">
+              <span class="section-kicker">05</span>
+              <h2>Governance Overlays</h2>
+            </div>
+
+            <label class="range-field" for="dataCredibility">
+              <span><span>Data credibility</span><output id="dataCredibilityOut"></output></span>
+              <input id="dataCredibility" type="range" min="40" max="100" step="5" value="75" />
+            </label>
+
+            <label class="range-field" for="basisRiskMargin">
+              <span><span>Basis risk margin</span><output id="basisRiskMarginOut"></output></span>
+              <input id="basisRiskMargin" type="range" min="0" max="25" step="1" value="5" />
+            </label>
+
+            <label class="range-field" for="costOfCapital">
+              <span><span>Cost of capital</span><output id="costOfCapitalOut"></output></span>
+              <input id="costOfCapital" type="range" min="0" max="18" step="0.5" value="5" />
+            </label>
+          </section>
         </aside>
 
         <main class="workspace">
@@ -176,6 +198,11 @@
               <span>ALM</span>
               <strong>Liquidity & Layers</strong>
             </div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step">
+              <span>Governance</span>
+              <strong>Stress · Peer review · Sign-off</strong>
+            </div>
           </section>
 
           <section class="metric-grid" aria-label="Core metrics">
@@ -193,6 +220,11 @@
               <span>Gross premium</span>
               <strong id="grossPremium">-</strong>
               <small><span class="math">P<sub>gross</sub> = P<sub>pure</sub>/(1 - θ)</span></small>
+            </article>
+            <article class="metric-card">
+              <span>Rate adequacy</span>
+              <strong id="rateAdequacy">-</strong>
+              <small>Commercial / actuarial benchmark</small>
             </article>
             <article class="metric-card">
               <span>99.5% net loss</span>
@@ -218,6 +250,10 @@
               <strong>Capital</strong>
               <span class="math">EC = VaR_99.5%(L_net) - E[L_net]</span>
             </div>
+            <div class="formula-card">
+              <strong>Benchmark</strong>
+              <span class="math">P_act = (P_pure(1 + m_basis + m_param) + CoC × EC/N)/(1 - e - q)</span>
+            </div>
             <div class="formula-card assumption">
               <strong>Assumption</strong>
               <span>λ is trigger-eligible annual intensity; Z|trigger uses a normal approximation for demo purposes.</span>
@@ -225,13 +261,81 @@
           </section>
 
           <nav class="tabbar" role="tablist" aria-label="Demo modules">
-            <button class="tab-button active" type="button" role="tab" aria-selected="true" data-view="pricing">Pricing Engine</button>
+            <button class="tab-button active" type="button" role="tab" aria-selected="true" data-view="workflow">Workflow & Governance</button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="pricing">Pricing Engine</button>
             <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="capital">Capital & Risk Transfer</button>
             <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="ifrs">IFRS 17 PAA</button>
             <button class="tab-button" type="button" role="tab" aria-selected="false" data-view="alm">ALM</button>
           </nav>
 
-          <section class="view active" id="view-pricing" role="tabpanel">
+          <section class="view active" id="view-workflow" role="tabpanel">
+            <div class="view-grid">
+              <article class="panel wide">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Pricing file</span>
+                    <h2>Actuarial Workflow</h2>
+                  </div>
+                  <span class="badge" id="workflowBadge">-</span>
+                </div>
+                <div class="workflow-list" id="workflowRows"></div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Assumption register</span>
+                    <h2>Key Assumptions</h2>
+                  </div>
+                </div>
+                <div class="table-wrap compact">
+                  <table>
+                    <tbody id="assumptionRows"></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Risk appetite</span>
+                    <h2>Governance Gates</h2>
+                  </div>
+                </div>
+                <div class="table-wrap compact">
+                  <table>
+                    <tbody id="gateRows"></tbody>
+                  </table>
+                </div>
+              </article>
+
+              <article class="panel wide">
+                <div class="panel-heading">
+                  <div>
+                    <span class="panel-kicker">Sensitivity pack</span>
+                    <h2>Pricing Stress Tests</h2>
+                  </div>
+                  <span class="badge" id="stressBadge">Illustrative</span>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Scenario</th>
+                        <th>Trigger p</th>
+                        <th>Pure premium</th>
+                        <th>Actuarial benchmark</th>
+                        <th>Change</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stressRows"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="view" id="view-pricing" role="tabpanel" hidden>
             <div class="view-grid">
               <article class="panel">
                 <div class="panel-heading">
@@ -403,6 +507,6 @@
       </div>
     </div>
 
-    <script src="./app.js?v=3"></script>
+    <script src="./app.js?v=4"></script>
   </body>
 </html>

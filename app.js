@@ -19,6 +19,9 @@ const DEFAULTS = {
   liquidityBuffer: 110,
   stablecoinShare: 8,
   eventMonth: 6,
+  dataCredibility: 75,
+  basisRiskMargin: 5,
+  costOfCapital: 5,
 };
 
 const CONTROL_META = {
@@ -41,6 +44,9 @@ const CONTROL_META = {
   liquidityBuffer: { suffix: "%", decimals: 0 },
   stablecoinShare: { suffix: "%", decimals: 0 },
   eventMonth: { decimals: 0 },
+  dataCredibility: { suffix: "%", decimals: 0 },
+  basisRiskMargin: { suffix: "%", decimals: 0 },
+  costOfCapital: { suffix: "%", decimals: 1 },
 };
 
 const COLORS = {
@@ -291,9 +297,13 @@ function calculate() {
     lossRatio: grossPremium > 0 ? purePremium / grossPremium : 0,
   };
 
+  const capital = simulateCapital(pricing);
+  const governance = buildGovernance(pricing, capital);
+
   return {
     ...pricing,
-    capital: simulateCapital(pricing),
+    capital,
+    governance,
     ifrs: buildIfrsSchedule(pricing),
   };
 }
@@ -353,6 +363,161 @@ function simulateCapital(pricing) {
     economicCapital: Math.max(netVar995 - netMean, 0),
     avgRiCeded: totalRiCeded / simulations,
     avgCatCeded: totalCatCeded / simulations,
+  };
+}
+
+function normalizeScenarioInputs(inputs) {
+  const scenario = { ...inputs };
+  scenario.termYears = scenario.termMonths / 12;
+  scenario.discountFactor = Math.exp(-(scenario.discountRate / 100) * scenario.termYears);
+  scenario.totalLoad = clamp((scenario.riskLoad + scenario.expenseLoad + scenario.profitLoad) / 100, 0, 0.86);
+  scenario.affectedShare = clamp(scenario.affectedShare, 0, 100);
+  scenario.lambda = Math.max(0.001, scenario.lambda);
+  scenario.payout = Math.max(1, scenario.payout);
+  scenario.indexVol = Math.max(1, scenario.indexVol);
+  if (scenario.thresholdFull <= scenario.thresholdStart) {
+    scenario.thresholdFull = scenario.thresholdStart + 1;
+  }
+  return scenario;
+}
+
+function deterministicPricing(inputs) {
+  const scenario = normalizeScenarioInputs(inputs);
+  const expectedFactor = expectedPayoutFactor(scenario);
+  const lambdaTerm = scenario.lambda * scenario.termYears;
+  const triggerProbability = 1 - Math.exp(-lambdaTerm);
+  const frequencyBasis = scenario.multiTrigger ? lambdaTerm : triggerProbability;
+  const purePremium = frequencyBasis * scenario.payout * expectedFactor * scenario.discountFactor;
+  const grossPremium = purePremium / (1 - scenario.totalLoad);
+  return {
+    inputs: scenario,
+    expectedFactor,
+    triggerProbability,
+    purePremium,
+    grossPremium,
+  };
+}
+
+function buildGovernance(pricing, capital) {
+  const { inputs } = pricing;
+  const basisMargin = inputs.basisRiskMargin / 100;
+  const parameterMargin = (1 - inputs.dataCredibility / 100) * 0.12;
+  const capitalCostPerPolicy = (capital.economicCapital * (inputs.costOfCapital / 100)) / inputs.policies;
+  const expenseProfitDenominator = clamp(1 - (inputs.expenseLoad + inputs.profitLoad) / 100, 0.05, 1);
+  const benchmarkPremium =
+    (pricing.purePremium * (1 + basisMargin + parameterMargin) + capitalCostPerPolicy) / expenseProfitDenominator;
+  const rateAdequacy = benchmarkPremium > 0 ? pricing.grossPremium / benchmarkPremium : 0;
+  const transferCapacity =
+    inputs.retentionM * 1_000_000 + inputs.reinsuranceM * 1_000_000 + inputs.catBondM * 1_000_000;
+  const tailCoverRatio = capital.grossVar995 > 0 ? transferCapacity / capital.grossVar995 : 1;
+  const liquidityNeed = capital.netVar99 * (inputs.liquidityBuffer / 100);
+  const liquidityCoverage =
+    liquidityNeed > 0 ? (pricing.portfolioPremium + capital.economicCapital) / liquidityNeed : 1;
+
+  const stressInputs = [
+    ["Base", {}],
+    ["Frequency +20%", { lambda: inputs.lambda * 1.2 }],
+    ["Severity +20%", { payout: inputs.payout * 1.2 }],
+    ["Climate trend", { lambda: inputs.lambda * 1.25, indexMean: inputs.indexMean + inputs.indexVol * 0.25 }],
+    ["Lower credibility", { dataCredibility: Math.max(40, inputs.dataCredibility - 20) }],
+  ];
+  const baseScenario = deterministicPricing(inputs);
+  const baseBenchmark =
+    (baseScenario.purePremium * (1 + basisMargin + parameterMargin) + capitalCostPerPolicy) /
+    expenseProfitDenominator;
+  const stressRows = stressInputs.map(([name, overrides]) => {
+    const scenarioInputs = normalizeScenarioInputs({ ...inputs, ...overrides });
+    const scenarioPricing = deterministicPricing(scenarioInputs);
+    const scenarioParameterMargin = (1 - scenarioInputs.dataCredibility / 100) * 0.12;
+    const scenarioBenchmark =
+      (scenarioPricing.purePremium * (1 + basisMargin + scenarioParameterMargin) + capitalCostPerPolicy) /
+      expenseProfitDenominator;
+    return {
+      name,
+      triggerProbability: scenarioPricing.triggerProbability,
+      purePremium: scenarioPricing.purePremium,
+      benchmarkPremium: scenarioBenchmark,
+      change: baseBenchmark > 0 ? scenarioBenchmark / baseBenchmark - 1 : 0,
+    };
+  });
+
+  const gates = [
+    {
+      label: "Rate adequacy",
+      value: fmtPct(rateAdequacy),
+      status: rateAdequacy >= 1 ? "Pass" : rateAdequacy >= 0.9 ? "Watch" : "Fail",
+      note: "Commercial gross premium vs actuarial benchmark",
+    },
+    {
+      label: "Data credibility",
+      value: fmtPct(inputs.dataCredibility / 100, 0),
+      status: inputs.dataCredibility >= 75 ? "Pass" : inputs.dataCredibility >= 60 ? "Watch" : "Fail",
+      note: "Proxy for station history, completeness, and index stability",
+    },
+    {
+      label: "Tail transfer cover",
+      value: fmtPct(tailCoverRatio),
+      status: tailCoverRatio >= 1 ? "Pass" : tailCoverRatio >= 0.85 ? "Watch" : "Fail",
+      note: "Retention + reinsurance + Cat Bond vs gross 99.5% loss",
+    },
+    {
+      label: "Liquidity coverage",
+      value: `${fmtNumber(liquidityCoverage, 2)}x`,
+      status: liquidityCoverage >= 1 ? "Pass" : liquidityCoverage >= 0.85 ? "Watch" : "Fail",
+      note: "Gross premium + economic capital vs 99% rapid payout need",
+    },
+    {
+      label: "Basis risk allowance",
+      value: fmtPct(basisMargin, 0),
+      status: inputs.basisRiskMargin >= 5 ? "Pass" : inputs.basisRiskMargin >= 2 ? "Watch" : "Fail",
+      note: "Explicit allowance for index-loss mismatch",
+    },
+  ];
+
+  const workflow = [
+    {
+      title: "1. Data intake & exposure mapping",
+      status: gates[1].status,
+      detail: "Validate weather station feed, policy geocoding, missing values, and exposure aggregation.",
+    },
+    {
+      title: "2. Hazard and trigger calibration",
+      status: inputs.indexVol <= 45 && inputs.thresholdFull > inputs.thresholdStart ? "Pass" : "Watch",
+      detail: "Calibrate trigger intensity, index distribution, attachment, exhaustion, and climate trend view.",
+    },
+    {
+      title: "3. Technical premium build",
+      status: gates[0].status,
+      detail: "Calculate pure premium, basis risk margin, parameter uncertainty, expenses, and profit load.",
+    },
+    {
+      title: "4. Portfolio capital and risk transfer",
+      status: gates[2].status,
+      detail: "Run aggregate loss simulation, VaR / TVaR, retention, reinsurance, and Cat Bond recoveries.",
+    },
+    {
+      title: "5. IFRS 17 PAA and ALM checks",
+      status: gates[3].status,
+      detail: "Check simplified PAA revenue pattern, claim timing, liquidity pool, and short-duration assets.",
+    },
+    {
+      title: "6. Peer review and sign-off",
+      status: gates.some((gate) => gate.status === "Fail") ? "Fail" : gates.some((gate) => gate.status === "Watch") ? "Watch" : "Pass",
+      detail: "Document assumptions, stress tests, limitations, management action, and final rate recommendation.",
+    },
+  ];
+
+  return {
+    basisMargin,
+    parameterMargin,
+    capitalCostPerPolicy,
+    benchmarkPremium,
+    rateAdequacy,
+    tailCoverRatio,
+    liquidityCoverage,
+    stressRows,
+    gates,
+    workflow,
   };
 }
 
@@ -772,10 +937,36 @@ function setRows(tbody, rows) {
     .join("");
 }
 
+function statusClass(status) {
+  if (status === "Pass") return "status-good";
+  if (status === "Watch") return "status-watch";
+  return "status-risk";
+}
+
+function statusBadge(status) {
+  return `<span class="workflow-status ${statusClass(status)}">${status}</span>`;
+}
+
+function renderWorkflow(model) {
+  const { workflow } = model.governance;
+  $("#workflowRows").innerHTML = workflow
+    .map(
+      (item) => `<article class="workflow-item">
+        <header>
+          <strong>${item.title}</strong>
+          ${statusBadge(item.status)}
+        </header>
+        <p>${item.detail}</p>
+      </article>`,
+    )
+    .join("");
+}
+
 function renderTables(model) {
   const inputs = model.inputs;
   const capital = model.capital;
   const ifrs = model.ifrs;
+  const governance = model.governance;
   const theta = inputs.totalLoad;
   setRows($("#pricingRows"), [
     ["Trigger probability p", fmtPct(model.triggerProbability), '<span class="math">1 - e<sup>-λτ</sup></span>'],
@@ -791,6 +982,8 @@ function renderTables(model) {
     ["Gross premium Pgross", fmtMoney(model.grossPremium), '<span class="math">P<sub>pure</sub>/(1 - θ)</span>'],
     ["Portfolio expected loss", fmtMoney(model.portfolioExpectedLoss), `${fmtNumber(inputs.policies)} policies`],
     ["Portfolio gross premium", fmtMoney(model.portfolioPremium), "Initial LRC under simplified PAA"],
+    ["Actuarial benchmark", fmtMoney(governance.benchmarkPremium), "Pure premium + basis risk + parameter risk + cost of capital"],
+    ["Rate adequacy", fmtPct(governance.rateAdequacy), "Commercial gross premium / actuarial benchmark"],
   ]);
 
   setRows($("#capitalRows"), [
@@ -834,11 +1027,51 @@ function renderTables(model) {
     ["Low-risk asset charge", fmtMoney(conservativeCharge)],
     ["Available gross premium", fmtMoney(model.portfolioPremium)],
   ]);
+
+  setRows($("#assumptionRows"), [
+    ["Trigger intensity basis", `${fmtNumber(inputs.lambda, 2)}/yr`, "Trigger-eligible events"],
+    ["Severity model", "Normal approximation", "Demo assumption for Z|trigger"],
+    ["Affected share", fmtPct(inputs.affectedShare / 100, 0), "Common-shock exposure assumption"],
+    ["Data credibility", fmtPct(inputs.dataCredibility / 100, 0), "Drives parameter risk margin"],
+    ["Basis risk margin", fmtPct(governance.basisMargin, 0), "Index-loss mismatch allowance"],
+    ["Parameter risk margin", fmtPct(governance.parameterMargin, 1), "Credibility-driven load"],
+    ["Capital cost per policy", fmtMoney(governance.capitalCostPerPolicy), `${fmtPct(inputs.costOfCapital / 100, 1)} CoC on EC`],
+  ]);
+
+  setRows(
+    $("#gateRows"),
+    governance.gates.map((gate) => [gate.label, `${gate.value} ${statusBadge(gate.status)}`, gate.note]),
+  );
+
+  $("#stressRows").innerHTML = governance.stressRows
+    .map(
+      (row) => `<tr>
+        <td>${row.name}</td>
+        <td>${fmtPct(row.triggerProbability)}</td>
+        <td>${fmtMoney(row.purePremium)}</td>
+        <td>${fmtMoney(row.benchmarkPremium)}</td>
+        <td>${row.change >= 0 ? "+" : ""}${fmtPct(row.change)}</td>
+      </tr>`,
+    )
+    .join("");
 }
 
 function updateBadges(model) {
   $("#expectedFactorBadge").textContent = `E[g(Z)|trigger] ${fmtPct(model.expectedFactor)}`;
   $("#lossRatioBadge").textContent = `Expected loss ratio ${fmtPct(model.lossRatio)}`;
+
+  const workflowBadge = $("#workflowBadge");
+  const workflowStatus = model.governance.workflow[model.governance.workflow.length - 1].status;
+  workflowBadge.className = "badge";
+  workflowBadge.textContent =
+    workflowStatus === "Pass" ? "Ready for sign-off" : workflowStatus === "Watch" ? "Review required" : "Action required";
+  workflowBadge.classList.add(statusClass(workflowStatus));
+
+  const stressBadge = $("#stressBadge");
+  const maxStressIncrease = Math.max(...model.governance.stressRows.map((row) => row.change));
+  stressBadge.className = "badge";
+  stressBadge.textContent = `Max stress ${maxStressIncrease >= 0 ? "+" : ""}${fmtPct(maxStressIncrease)}`;
+  stressBadge.classList.add(maxStressIncrease > 0.2 ? "status-watch" : "status-good");
 
   const coverRatio = model.inputs.retentionM * 1_000_000 + model.inputs.reinsuranceM * 1_000_000 + model.inputs.catBondM * 1_000_000;
   const capitalBadge = $("#capitalBadge");
@@ -876,6 +1109,7 @@ function renderMetrics(model) {
   $("#triggerProbability").textContent = fmtPct(model.triggerProbability);
   $("#purePremium").textContent = fmtMoney(model.purePremium);
   $("#grossPremium").textContent = fmtMoney(model.grossPremium);
+  $("#rateAdequacy").textContent = fmtPct(model.governance.rateAdequacy);
   $("#netVar").textContent = fmtMoney(model.capital.netVar995);
 }
 
@@ -885,6 +1119,7 @@ function renderAll() {
   const model = calculate();
   renderMetrics(model);
   updateBadges(model);
+  renderWorkflow(model);
   renderTables(model);
   drawPayoutChart(model);
   drawPremiumChart(model);
